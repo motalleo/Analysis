@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A股个股速查 · 突破评分</title>
+<style>
+  :root{
+    --bg:#070A0F; --panel:rgba(255,255,255,.035); --panel2:rgba(255,255,255,.06);
+    --line:rgba(120,180,200,.14); --text:#EAF0F6; --muted:#8A97A8; --faint:#586577;
+    --up:#FF4D5E; --down:#1FCB8A; --amber:#F2B23C; --accent:#37E6D4;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg)}
+  body{color:var(--text);font-family:var(--sans);min-height:100vh;padding:30px 16px 60px;position:relative;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+  /* 科技感背景:辉光 + 细网格 */
+  body::before{content:"";position:fixed;inset:0;z-index:-2;
+    background:
+      radial-gradient(900px 500px at 50% -8%, rgba(55,230,212,.10), transparent 62%),
+      radial-gradient(700px 500px at 100% 0%, rgba(120,90,255,.07), transparent 55%),
+      var(--bg);}
+  body::after{content:"";position:fixed;inset:0;z-index:-1;opacity:.5;
+    background-image:linear-gradient(rgba(120,180,200,.05) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(120,180,200,.05) 1px,transparent 1px);
+    background-size:34px 34px;
+    mask-image:radial-gradient(ellipse 90% 70% at 50% 30%, #000 40%, transparent 100%);}
+  .wrap{max-width:560px;margin:0 auto}
+
+  header{margin-bottom:22px}
+  h1{font-size:19px;font-weight:650;letter-spacing:.4px;display:flex;align-items:center;gap:9px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  h1 b{background:linear-gradient(90deg,var(--accent),#9be3ff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:700}
+  .sub{font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:5px;letter-spacing:.3px}
+
+  .glass{background:linear-gradient(180deg,var(--panel),rgba(255,255,255,.012));
+    border:1px solid var(--line);border-radius:16px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 40px rgba(0,0,0,.45);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+
+  .bar-row{display:flex;gap:10px;margin-bottom:16px}
+  input{flex:1;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:11px;color:var(--text);
+    font-family:var(--mono);font-size:16px;padding:13px 15px;outline:none;transition:.18s}
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(55,230,212,.12)}
+  input::placeholder{color:var(--faint)}
+  button{font-family:var(--sans);border:none;border-radius:11px;cursor:pointer;font-weight:600;transition:.16s}
+  .btn-go{background:linear-gradient(180deg,#FF6472,var(--up));color:#fff;font-size:15px;padding:0 24px;box-shadow:0 4px 18px rgba(255,77,94,.35)}
+  .btn-go:active{transform:translateY(1px)}
+
+  .card{padding:22px;animation:rise .4s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .sec{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
+  .lab{font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .grid{display:flex;flex-wrap:wrap;gap:12px}
+  .kv{flex:1;min-width:76px}
+  .kv .k{font-size:11px;color:var(--muted)}
+  .kv .v{font-family:var(--mono);font-size:16px;margin-top:3px}
+  .chip{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:4px 10px;font-size:12px;margin:0 6px 7px 0}
+  .pbar{height:6px;background:rgba(0,0,0,.4);border-radius:4px;overflow:hidden}
+  .pbar i{display:block;height:100%;border-radius:4px;transition:width .5s cubic-bezier(.2,.7,.2,1)}
+  .ci{display:flex;align-items:center;gap:10px;padding:3.5px 0;font-size:12px}
+  .ci .d{width:6px;height:6px;border-radius:50%;flex:0 0 auto}
+  .note{font-size:11px;color:var(--faint);line-height:1.65}
+  .msg{color:var(--muted);font-size:13px;padding:18px;text-align:center}
+  .err{color:var(--amber);font-size:13px;padding:14px;text-align:center}
+
+  /* 榜单模块 */
+  .mod{margin-top:22px;padding:20px}
+  .mod-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .mod-head h2{font-size:14px;font-weight:650;display:flex;align-items:center;gap:8px}
+  .mod-head .spark{width:6px;height:14px;border-radius:2px;background:linear-gradient(var(--accent),transparent);box-shadow:0 0 8px var(--accent)}
+  .mini{font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.6}
+  .btn-rank{background:rgba(55,230,212,.12);color:var(--accent);border:1px solid rgba(55,230,212,.3);font-size:12.5px;padding:8px 14px}
+  .btn-rank:active{transform:translateY(1px)}
+  .btn-rank:disabled{opacity:.5;cursor:default}
+  .rk-status{font-size:11.5px;color:var(--muted);font-family:var(--mono);margin:12px 0 8px;min-height:16px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{font-size:10.5px;letter-spacing:.6px;color:var(--muted);text-align:left;font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:8px;border-bottom:1px solid rgba(120,180,200,.07)}
+  td.num{font-family:var(--mono);text-align:right}
+  .rk{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;font-family:var(--mono);font-size:11px;background:var(--panel2);color:var(--muted)}
+  .rk.top{background:linear-gradient(135deg,var(--accent),#1f8f86);color:#04120f;font-weight:700}
+  .scorebadge{font-family:var(--mono);font-weight:600;padding:2px 8px;border-radius:6px}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="dot"></span>A股个股速查 · <b>突破评分</b></h1>
+    <div class="sub">EASTMONEY × TENCENT · 实时直连 · 满分 100</div>
+  </header>
+
+  <div class="bar-row">
+    <input id="code" placeholder="输入6位代码,如 600519" inputmode="numeric">
+    <button class="btn-go" onclick="go()">查询</button>
+  </div>
+  <div id="out"></div>
+
+  <!-- 市场突破强势榜 -->
+  <div class="mod glass">
+    <div class="mod-head">
+      <h2><span class="spark"></span>市场突破强势榜 · TOP 30</h2>
+      <button class="btn-rank" id="rankBtn" onclick="scoreRanking()">打分并排序</button>
+    </div>
+    <div class="mini">取东财当日涨幅榜前 40 只作候选池,用右侧突破模型逐只打分,按分数取前 30。<b>非全市场5000只</b>(浏览器无法实时全市场打分),是"强候选池中的突破分排名"。点上方按钮触发,会向东财发约40次请求,请勿频繁刷新。</div>
+    <div class="rk-status" id="rankStatus">正在加载候选池…</div>
+    <table><thead><tr><th style="width:34px">#</th><th>名称</th><th class="num">突破分</th><th class="num">涨幅</th><th class="num">量比</th></tr></thead>
+    <tbody id="rankBody"></tbody></table>
+  </div>
+</div>
+
+<script>
+"use strict";
+const CAPM={"趋势":25,"量能":20,"动能":20,"形态":25,"风控":10};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let POOL=[];
+
+// ---------- 跨域获取(JSONP / script 全局变量) ----------
+function jsonp(url,timeout=12000){
+  return new Promise((resolve,reject)=>{
+    const cb="__cb"+Math.random().toString(36).slice(2);
+    const s=document.createElement("script");
+    const t=setTimeout(()=>{clean();reject(new Error("超时"));},timeout);
+    function clean(){clearTimeout(t);delete window[cb];s.remove();}
+    window[cb]=d=>{clean();resolve(d);};
+    s.onerror=()=>{clean();reject(new Error("加载失败"));};
+    s.src=url+(url.includes("?")?"&":"?")+"cb="+cb;
+    document.head.appendChild(s);
+  });
+}
+function tencentQuote(code){
+  return new Promise((resolve,reject)=>{
+    const pre=(code[0]==="6"||code[0]==="9")?"sh":(code[0]==="8"?"bj":"sz");
+    const vn="v_"+pre+code;const s=document.createElement("script");
+    const t=setTimeout(()=>{clean();reject(new Error("腾讯超时"));},10000);
+    function clean(){clearTimeout(t);s.remove();}
+    s.onload=()=>{const raw=window[vn];clean();
+      if(!raw){reject(new Error("腾讯无数据"));return;}
+      const v=raw.split("~");
+      resolve({name:v[1],price:+v[3]||0,change_pct:+v[32]||0,amount_wan:+v[37]||0,
+        turnover_pct:+v[38]||0,pe_ttm:+v[39]||0,mcap_yi:+v[44]||0,float_mcap_yi:+v[45]||0,
+        pb:+v[46]||0,limit_up:+v[47]||0,limit_down:+v[48]||0,vol_ratio:+v[49]||0});};
+    s.onerror=()=>{clean();reject(new Error("腾讯加载失败"));};
+    s.src="https://qt.gtimg.cn/q="+pre+code;document.head.appendChild(s);
+  });
+}
+function secid(code){return (code[0]==="6"||code[0]==="9")?"1."+code:"0."+code;}
+async function emKline(code){
+  const d0=new Date();d0.setDate(d0.getDate()-400);
+  const beg=""+d0.getFullYear()+String(d0.getMonth()+1).padStart(2,"0")+String(d0.getDate()).padStart(2,"0");
+  const url="https://push2his.eastmoney.com/api/qt/stock/kline/get?secid="+secid(code)
+    +"&klt=101&fqt=1&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&beg="+beg+"&end=20500101";
+  const d=await jsonp(url);
+  return (((d.data||{}).klines)||[]).map(line=>{const p=line.split(",");
+    return {date:p[0],open:+p[1],close:+p[2],high:+p[3],low:+p[4],vol:+p[5],amount:+p[6]};});
+}
+async function emConcepts(code){
+  const mc=code[0]==="6"?1:0;
+  const url="https://push2.eastmoney.com/api/qt/slist/get?fltt=2&invt=2&secid="+mc+"."+code
+    +"&spt=3&pi=0&pz=200&po=1&fields=f12,f14,f3,f128";
+  const d=await jsonp(url);let diff=((d.data||{}).diff)||{};
+  const items=Array.isArray(diff)?diff:Object.values(diff);
+  return items.map(it=>it.f14).filter(Boolean).slice(0,12);
+}
+async function emFflow(code){
+  const url="https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?secid="+secid(code)
+    +"&klt=1&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57";
+  const d=await jsonp(url);const kl=((d.data||{}).klines)||[];let s=0;
+  for(const line of kl){const p=line.split(",");if(p.length>=2)s+=+p[1];}
+  return kl.length?s/1e4:null;
+}
+async function emClist(pz=40){
+  const fs="m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"; // 深主板+创业板+沪主板+科创(原样,'+'代表空格)
+  const url="https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz="+pz+"&po=1&np=1&fltt=2&invt=2&fid=f3&fs="+fs+"&fields=f12,f14,f2,f3,f10";
+  const d=await jsonp(url);let diff=((d.data||{}).diff)||[];
+  const arr=Array.isArray(diff)?diff:Object.values(diff);
+  return arr.map(it=>({code:String(it.f12),name:it.f14,price:+it.f2,pct:+it.f3,vr:+it.f10}))
+            .filter(x=>/^\d{6}$/.test(x.code)&&!/ST|退/.test(x.name||""));
+}
+
+// ---------- 指标 + 评分 ----------
+function ema(a,span){const k=2/(span+1);let p=a[0];const o=[p];for(let i=1;i<a.length;i++){p=a[i]*k+p*(1-k);o.push(p);}return o;}
+function ma(a,n){return a.map((_,i)=>i<n-1?null:a.slice(i-n+1,i+1).reduce((x,y)=>x+y,0)/n);}
+function indicators(rows){
+  const c=rows.map(r=>r.close),o=rows.map(r=>r.open),h=rows.map(r=>r.high),l=rows.map(r=>r.low),v=rows.map(r=>r.vol);
+  const i=rows.length-1;
+  const ma5=ma(c,5),ma10=ma(c,10),ma20=ma(c,20),ma60=ma(c,60),vma5=ma(v,5),vma20=ma(v,20);
+  const e12=ema(c,12),e26=ema(c,26),dif=e12.map((x,k)=>x-e26[k]),dea=ema(dif,9),mh=dif.map((x,k)=>2*(x-dea[k]));
+  return {date:rows[i].date,c:c[i],o:o[i],ma5:ma5[i],ma10:ma10[i],ma20:ma20[i],ma60:ma60[i],ma60_10:ma60[i-10],
+    v:v[i],vma5:vma5[i],vma20:vma20[i],dif:dif[i],dea:dea[i],mh:mh[i],mh_prev:mh[i-1],
+    p20h:Math.max(...h.slice(i-20,i)),p20l:Math.min(...l.slice(i-20,i)),amount:rows[i].amount,pct:c[i]/c[i-1]-1};
+}
+function scoreRules(ind,cap){
+  const box=ind.p20l?(ind.p20h-ind.p20l)/ind.p20l:null,p=ind.pct;
+  return [["趋势","均线多头排列 5>10>20>60",12,ind.ma5>ind.ma10&&ind.ma10>ind.ma20&&ind.ma20>ind.ma60],
+    ["趋势","股价站上 MA5",5,ind.c>ind.ma5],["趋势","MA60 中期向上",8,ind.ma60>ind.ma60_10],
+    ["量能","放量 V>5日均量×1.5",12,ind.v>ind.vma5*1.5],["量能","V>20日均量",8,ind.v>ind.vma20],
+    ["动能","DIF 在 DEA 之上",7,ind.dif>ind.dea],["动能","DIF>0(零轴上)",7,ind.dif>0],["动能","红柱放大",6,ind.mh>ind.mh_prev],
+    ["形态","突破前20日最高",15,ind.c>ind.p20h],["形态","收阳线 C>O",5,ind.c>ind.o],["形态","突破前窄幅整理<35%",5,box!==null&&box<0.35],
+    ["风控","成交额>5000万",3,ind.amount>5e7],["风控","流通市值>20亿",3,cap!==null&&cap>2e9],
+    ["风控","非涨停 涨幅<9.7%",2,p<0.097],["风控","突破力度 涨幅>2%",2,p>0.02]];
+}
+function scoreOf(rules){return rules.reduce((s,r)=>s+(r[3]?r[2]:0),0);}
+function verdict(t){
+  if(t>=80)return["强突破信号 — 多数条件共振","var(--up)","建仓候选 · 可纳入买入观察(右侧突破成立)"];
+  if(t>=60)return["较强 — 部分条件待确认","var(--amber)","关注 · 轻仓试探,或等回踩突破位确认再加"];
+  if(t>=40)return["中性 — 突破不充分","var(--muted)","观望 · 不符合右侧建仓条件"];
+  return["不符合右侧突破特征","var(--down)","规避 · 技术结构不支持参与"];
+}
+
+// ---------- 渲染:单股 ----------
+function kv(k,v){return `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`;}
+function render(code,q,kline,concepts,fflow){
+  let html=`<div class="card glass">`;
+  const name=q?q.name:code;
+  html+=`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+    <span style="font-weight:650;font-size:17px">${name} <span style="color:var(--muted);font-family:var(--mono);font-size:13px">${code}</span></span></div>`;
+  if(q){
+    const c=q.change_pct>=0?"var(--up)":"var(--down)";
+    html+=`<div><span style="font-family:var(--mono);font-size:32px;font-weight:600;color:${c}">${q.price.toFixed(2)}</span>
+      <span style="font-family:var(--mono);font-size:15px;color:${c};margin-left:9px">${q.change_pct>=0?"+":""}${q.change_pct.toFixed(2)}%</span></div>
+      <div class="grid" style="margin-top:15px">`
+      +kv("PE(TTM)",q.pe_ttm.toFixed(1))+kv("PB",q.pb.toFixed(2))+kv("总市值",q.mcap_yi.toFixed(0)+"亿")
+      +kv("换手率",q.turnover_pct.toFixed(2)+"%")+kv("量比",q.vol_ratio.toFixed(2))
+      +kv("涨停/跌停",q.limit_up.toFixed(2)+"/"+q.limit_down.toFixed(2))+`</div>`;
+  }else{html+=`<div style="color:var(--muted)">行情暂不可用</div>`;}
+  if(kline&&kline.length>=61){
+    const ind=indicators(kline);if(q){ind.amount=q.amount_wan*1e4;}
+    const cap=(q&&q.float_mcap_yi)?q.float_mcap_yi*1e8:null;
+    const rules=scoreRules(ind,cap);const total=scoreOf(rules);const[vt,vc,act]=verdict(total);
+    const exit=ind.c<ind.ma10
+      ?`<span style="color:var(--down);font-weight:600">现价已跌破 MA10 → 持仓者按纪律减仓/止损离场</span>`
+      :`<span style="color:var(--muted)">未触发离场信号(止损位见下)</span>`;
+    const dims={};rules.forEach(r=>{(dims[r[0]]=dims[r[0]]||[]).push(r);});
+    let blocks="";
+    for(const dd in dims){const items=dims[dd];const got=scoreOf(items);const ratio=got/CAPM[dd];
+      const bc=ratio>=1?"var(--up)":(ratio>0?"var(--amber)":"var(--line)");let rows="";
+      items.forEach(r=>{const ok=r[3];const dot=ok?"var(--up)":"var(--down)";const col=ok?"var(--text)":"var(--muted)";
+        const mk=ok?"+"+r[2]:"0";const mkc=ok?"var(--up)":"var(--faint)";
+        rows+=`<div class="ci"><span class="d" style="background:${dot}"></span><span style="flex:1;color:${col}">${r[1]}</span><span style="font-family:var(--mono);color:${mkc}">${mk}</span></div>`;});
+      blocks+=`<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--muted)">${dd}</span><span style="font-family:var(--mono)">${got} / ${CAPM[dd]}</span></div>
+        <div class="pbar"><i style="width:${ratio*100}%;background:${bc}"></i></div>${rows}</div>`;}
+    const stop=`MA10=${ind.ma10.toFixed(2)} | 突破位×0.99=${(ind.p20h*0.99).toFixed(2)} | -7%=${(ind.c*0.93).toFixed(2)}`;
+    html+=`<div class="sec"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+      <span class="lab" style="margin:0">右侧突破评分 · 东财K线 · ${ind.date}</span>
+      <span style="font-family:var(--mono);font-size:34px;font-weight:600;color:${vc};text-shadow:0 0 22px ${vc}66"><span id="bigScore" data-to="${total}">0</span><span style="font-size:15px;color:var(--faint)">/100</span></span></div>
+      <div style="font-size:12px;font-weight:600;color:${vc};margin-bottom:8px">${vt}</div>
+      <div style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:11px">
+        <div style="font-size:12.5px;margin-bottom:5px"><span style="color:var(--muted)">操作信号(进场) · </span><span style="color:${vc};font-weight:600">${act}</span></div>
+        <div style="font-size:12.5px"><span style="color:var(--muted)">离场信号 · </span>${exit}</div></div>${blocks}
+      <div style="font-size:11px;color:var(--muted)">止损参考:${stop}</div>
+      <div style="font-size:11px;color:var(--faint);margin-top:4px">信号为本技术模型机械输出,仅供参考、非投资建议;进场看分数,离场看止损,二者独立。</div></div>`;
+  }else{html+=`<div class="sec" style="font-size:12px;color:var(--amber)">突破评分:K线暂不可用(东财接口未返回或上市过短)</div>`;}
+  if(concepts&&concepts.length){
+    html+=`<div class="sec"><div class="lab">题材 / 板块归属(东财)</div><div>`+concepts.map(c=>`<span class="chip">${c}</span>`).join("")+`</div></div>`;}
+  if(fflow!==null&&fflow!==undefined){const c=fflow>=0?"var(--up)":"var(--down)";
+    html+=`<div class="sec" style="font-size:12px;color:var(--muted)">当日主力累计净流入:<span style="font-family:var(--mono);color:${c};font-size:14px"> ${fflow>=0?"+":""}${fflow.toFixed(0)} 万元</span></div>`;}
+  html+=`<div class="sec note">数据:腾讯 + 东财(浏览器JSONP直连)。突破评分仅按技术模型机械打分,高分≠买入,需叠加大盘择时与止损纪律,非投资建议。</div></div>`;
+  return html;
+}
+function animateCount(){
+  const el=document.getElementById("bigScore");if(!el)return;
+  const to=+el.dataset.to;const t0=performance.now();const dur=650;
+  (function step(t){const k=Math.min(1,(t-t0)/dur);el.textContent=Math.round(to*(1-Math.pow(1-k,3)));if(k<1)requestAnimationFrame(step);})(t0);
+}
+
+// ---------- 主流程:单股 ----------
+function normalize(s){return (s.toUpperCase().replace(/\.(SH|SZ|BJ)/g,"").replace(/^(SH|SZ|BJ)/,"").match(/\d/g)||[]).join("");}
+async function go(){
+  const code=normalize(document.getElementById("code").value);
+  const box=document.getElementById("out");
+  if(!/^\d{6}$/.test(code)){box.innerHTML=`<div class="card glass"><div class="err">请输入6位数字代码</div></div>`;return;}
+  box.innerHTML=`<div class="card glass"><div class="msg">查询中…(并行取数,东财稍慢,请稍候)</div></div>`;
+  const [q,kl,cc,ff]=await Promise.allSettled([tencentQuote(code),emKline(code),emConcepts(code),emFflow(code)]);
+  const got=x=>x.status==="fulfilled"?x.value:null;
+  try{box.innerHTML=render(code,got(q),got(kl),got(cc),got(ff));animateCount();}
+  catch(e){box.innerHTML=`<div class="card glass"><div class="err">渲染出错:${e.message}</div></div>`;}
+  if(!got(q)&&!got(kl)){box.innerHTML+=`<div class="card glass" style="margin-top:12px"><div class="err">所有数据源都未返回。可能网络/接口限流,或浏览器拦截了跨域脚本。稍后重试或换用本地 Python 版。</div></div>`;}
+}
+document.getElementById("code").addEventListener("keydown",e=>{if(e.key==="Enter")go();});
+
+// ---------- 市场强势榜 ----------
+function scoreBadge(t){const[,c]=verdict(t);return `<span class="scorebadge" style="color:${c};background:${c}1f">${t}</span>`;}
+function renderRank(list,scored){
+  const body=document.getElementById("rankBody");
+  body.innerHTML=list.map((s,i)=>`<tr>
+    <td><span class="rk ${scored&&i<3?'top':''}">${i+1}</span></td>
+    <td>${s.name} <span style="color:var(--faint);font-family:var(--mono);font-size:11px">${s.code}</span></td>
+    <td class="num">${scored?scoreBadge(s.score):'<span style="color:var(--faint)">—</span>'}</td>
+    <td class="num" style="color:${s.pct>=0?'var(--up)':'var(--down)'}">${s.pct>=0?'+':''}${s.pct.toFixed(2)}%</td>
+    <td class="num" style="color:var(--muted)">${(s.vr||0).toFixed(2)}</td></tr>`).join("");
+}
+async function loadRanking(){
+  const st=document.getElementById("rankStatus");
+  try{POOL=await emClist(40);
+    if(!POOL.length){st.textContent="候选池为空(可能非交易时段或接口限流)。";return;}
+    renderRank(POOL.slice(0,30),false);
+    st.textContent='候选池已就绪('+POOL.length+'只)。点「打分并排序」用突破模型评分。';
+  }catch(e){st.textContent="候选池加载失败:"+e.message+"(稍后重试)";}
+}
+async function scoreRanking(){
+  const btn=document.getElementById("rankBtn"),st=document.getElementById("rankStatus");
+  if(!POOL.length){await loadRanking();if(!POOL.length)return;}
+  btn.disabled=true;
+  const N=Math.min(POOL.length,40),scored=[];
+  for(let i=0;i<N;i++){const s=POOL[i];
+    st.textContent=`打分中 ${i+1}/${N} · ${s.name} …`;
+    try{const kl=await emKline(s.code);
+      if(kl.length>=61){const ind=indicators(kl);scored.push({...s,score:scoreOf(scoreRules(ind,null))});}
+    }catch(e){}
+    await sleep(1100);
+  }
+  scored.sort((a,b)=>b.score-a.score);
+  renderRank(scored.slice(0,30),true);
+  st.textContent=`完成 · 已对涨幅榜前 ${N} 只打分,展示突破分前 ${Math.min(30,scored.length)}(${new Date().toLocaleTimeString().slice(0,5)})`;
+  btn.disabled=false;
+}
+loadRanking();
+</script>
+</body>
+</html>
