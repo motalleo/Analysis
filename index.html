@@ -41,10 +41,19 @@
     backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 
   .bar-row{display:flex;gap:10px;margin-bottom:16px}
-  input{flex:1;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:11px;color:var(--text);
+  .search-wrap{position:relative;flex:1}
+  input{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:11px;color:var(--text);
     font-family:var(--mono);font-size:16px;padding:13px 15px;outline:none;transition:.18s}
   input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(55,230,212,.12)}
   input::placeholder{color:var(--faint)}
+  .suggest{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;display:none;
+    background:#0F141C;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    box-shadow:0 14px 44px rgba(0,0,0,.55)}
+  .suggest.show{display:block}
+  .sg{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;font-size:13.5px}
+  .sg:hover{background:var(--panel2)}
+  .sg .nm{color:var(--text)}
+  .sg .cd{color:var(--muted);font-family:var(--mono);font-size:12px}
   button{font-family:var(--sans);border:none;border-radius:11px;cursor:pointer;font-weight:600;transition:.16s}
   .btn-go{background:linear-gradient(180deg,#FF6472,var(--up));color:#fff;font-size:15px;padding:0 24px;box-shadow:0 4px 18px rgba(255,77,94,.35)}
   .btn-go:active{transform:translateY(1px)}
@@ -94,7 +103,10 @@
   </header>
 
   <div class="bar-row">
-    <input id="code" placeholder="输入6位代码,如 600519" inputmode="numeric">
+    <div class="search-wrap">
+      <input id="code" placeholder="输入代码或名称,如 600519 / 贵州茅台" autocomplete="off">
+      <div id="suggest" class="suggest"></div>
+    </div>
     <button class="btn-go" onclick="go()">查询</button>
   </div>
   <div id="out"></div>
@@ -270,10 +282,65 @@ function animateCount(){
 
 // ---------- 主流程:单股 ----------
 function normalize(s){return (s.toUpperCase().replace(/\.(SH|SZ|BJ)/g,"").replace(/^(SH|SZ|BJ)/,"").match(/\d/g)||[]).join("");}
+
+// 名称/拼音 → 代码:东财 suggest(JSON,UTF-8) 主,腾讯 smartbox 回退
+async function emSuggest(kw){
+  const url="https://searchadapter.eastmoney.com/api/suggest/get?input="+encodeURIComponent(kw)
+    +"&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=8";
+  const d=await jsonp(url);
+  const data=((d.QuotationCodeTable||{}).Data)||[];
+  return data.map(it=>({code:String(it.Code||it.code||""),name:it.Name||it.name||""}))
+             .filter(x=>/^\d{6}$/.test(x.code));
+}
+function txSuggest(kw){
+  return new Promise(resolve=>{
+    const s=document.createElement("script");
+    const t=setTimeout(()=>{clean();resolve([]);},6000);
+    function clean(){clearTimeout(t);try{delete window.v_hint;}catch(e){window.v_hint=undefined;}s.remove();}
+    s.onload=()=>{const raw=window.v_hint||"";clean();const out=[];
+      raw.split("^").forEach(seg=>{const m=seg.match(/(?:sh|sz|bj)?(\d{6})/);
+        const nm=seg.split("~").find(x=>/[\u4e00-\u9fff]/.test(x))||"";
+        if(m)out.push({code:m[1],name:nm});});
+      resolve(out);};
+    s.onerror=()=>{clean();resolve([]);};
+    s.src="https://smartbox.gtimg.cn/s3/?v=2&t=all&q="+encodeURIComponent(kw);
+    document.head.appendChild(s);
+  });
+}
+async function suggest(kw){
+  try{const a=await emSuggest(kw);if(a.length)return a;}catch(e){}
+  try{const b=await txSuggest(kw);if(b.length)return b;}catch(e){}
+  return [];
+}
+
+const inEl=document.getElementById("code"),sgEl=document.getElementById("suggest");
+let sgTimer=null,sgSeq=0;
+function showSuggest(list){
+  if(!list.length){sgEl.classList.remove("show");sgEl.innerHTML="";return;}
+  sgEl.innerHTML=list.map(s=>`<div class="sg" data-code="${s.code}"><span class="nm">${s.name}</span><span class="cd">${s.code}</span></div>`).join("");
+  sgEl.classList.add("show");
+  sgEl.querySelectorAll(".sg").forEach(el=>el.onclick=()=>{inEl.value=el.dataset.code;sgEl.classList.remove("show");go();});
+}
+inEl.addEventListener("input",()=>{
+  const kw=inEl.value.trim();clearTimeout(sgTimer);
+  if(!kw||/^\d{6}$/.test(normalize(kw))){sgEl.classList.remove("show");return;}
+  const seq=++sgSeq;
+  sgTimer=setTimeout(async()=>{const list=await suggest(kw);if(seq===sgSeq)showSuggest(list);},280);
+});
+document.addEventListener("click",e=>{if(!e.target.closest(".search-wrap"))sgEl.classList.remove("show");});
+
 async function go(){
-  const code=normalize(document.getElementById("code").value);
+  sgEl.classList.remove("show");
   const box=document.getElementById("out");
-  if(!/^\d{6}$/.test(code)){box.innerHTML=`<div class="card glass"><div class="err">请输入6位数字代码</div></div>`;return;}
+  let v=inEl.value.trim();
+  let code=normalize(v);
+  if(!/^\d{6}$/.test(code)){
+    if(!v){box.innerHTML=`<div class="card glass"><div class="err">请输入代码或名称</div></div>`;return;}
+    box.innerHTML=`<div class="card glass"><div class="msg">正在匹配「${v}」…</div></div>`;
+    const res=await suggest(v);
+    if(!res.length){box.innerHTML=`<div class="card glass"><div class="err">未找到匹配的股票:「${v}」,可改用6位代码</div></div>`;return;}
+    code=res[0].code;
+  }
   box.innerHTML=`<div class="card glass"><div class="msg">查询中…(并行取数,东财稍慢,请稍候)</div></div>`;
   const [q,kl,cc,ff]=await Promise.allSettled([tencentQuote(code),emKline(code),emConcepts(code),emFflow(code)]);
   const got=x=>x.status==="fulfilled"?x.value:null;
@@ -281,7 +348,7 @@ async function go(){
   catch(e){box.innerHTML=`<div class="card glass"><div class="err">渲染出错:${e.message}</div></div>`;}
   if(!got(q)&&!got(kl)){box.innerHTML+=`<div class="card glass" style="margin-top:12px"><div class="err">所有数据源都未返回。可能网络/接口限流,或浏览器拦截了跨域脚本。稍后重试或换用本地 Python 版。</div></div>`;}
 }
-document.getElementById("code").addEventListener("keydown",e=>{if(e.key==="Enter")go();});
+inEl.addEventListener("keydown",e=>{if(e.key==="Enter")go();});
 
 // ---------- 市场强势榜 ----------
 function scoreBadge(t){const[,c]=verdict(t);return `<span class="scorebadge" style="color:${c};background:${c}1f">${t}</span>`;}
